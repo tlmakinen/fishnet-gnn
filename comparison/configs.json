@@ -1,0 +1,17 @@
+{
+    "default_gcn":{
+        "small_model": {
+            hidden_channels: 24,
+            num_layers: 3,
+        },
+        "big_model": {
+            hidden_channels: 64,
+            num_layers: 28
+        },
+    },
+    
+
+
+
+
+}
