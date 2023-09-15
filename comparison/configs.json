@@ -1,8 +1,9 @@
 {
     "training_params" : {
         "epochs": 100,
-        "learning_rate": 0.01
-
+        "learning_rate": 0.01,
+        "data_dir": "/data101/makinen/ogbn/",
+        "model_dir": "/data101/makinen/graph_fishnets/models/"
     },
 
     "model_params":  {
@@ -10,25 +11,29 @@
                 "small_model": {
                     "hidden_channels": 24,
                     "num_layers": 3,
+                    "name": "gcn_small_"
                 },
                 "big_model": {
                     "hidden_channels": 64,
-                    "num_layers": 28
-                },
+                    "num_layers": 28,
+                    "name": "gcn_big_"
+                }
             },
             
             "fishnet_gcn": {     
                 "small_model": {
                     "hidden_channels": 24,
                     "num_layers": 3,
-                    "fishnets_n_p": 5
+                    "fishnets_n_p": 5,
+                    "name": "fishnet_small_"
                 },
                 "big_model": {
                     "hidden_channels": 64,
                     "num_layers": 14,
-                    "fishnets_n_p": 5
-                },
-            },
-        },
+                    "fishnets_n_p": 5,
+                    "name": "fishnet_big_"
+                }
+            }
+        }
 
 }
