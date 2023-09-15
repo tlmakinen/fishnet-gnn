@@ -1,17 +1,34 @@
 {
-    "default_gcn":{
-        "small_model": {
-            hidden_channels: 24,
-            num_layers: 3,
-        },
-        "big_model": {
-            hidden_channels: 64,
-            num_layers: 28
-        },
+    "training_params" : {
+        "epochs": 100,
+        "learning_rate": 0.01
+
     },
-    
 
-
-
+    "model_params":  {
+            "default_gcn": {
+                "small_model": {
+                    "hidden_channels": 24,
+                    "num_layers": 3,
+                },
+                "big_model": {
+                    "hidden_channels": 64,
+                    "num_layers": 28
+                },
+            },
+            
+            "fishnet_gcn": {     
+                "small_model": {
+                    "hidden_channels": 24,
+                    "num_layers": 3,
+                    "fishnets_n_p": 5
+                },
+                "big_model": {
+                    "hidden_channels": 64,
+                    "num_layers": 14,
+                    "fishnets_n_p": 5
+                },
+            },
+        },
 
 }
