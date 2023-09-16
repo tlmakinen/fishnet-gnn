@@ -12,14 +12,37 @@ import sys,os
 import json
 
 
+### SPECIFY WHICH MODEL WE'RE RUNNING
+model_size = sys.argv[1]
+
+
 ### READ IN CONFIGS
+config_file_path = './configs/configs.json'
+
+with open(config_file_path) as f:
+        configs = json.load(f)
 
 
+# model stuff
+HIDDEN_CHANNELS = configs["model_params"]["default_gcn"][model_size]["hidden_channels"]
+NUM_LAYERS = configs["model_params"]["default_gcn"][model_size]["num_layers"]
+MODEL_NAME = configs["model_params"]["default_gcn"][model_size]["name"]
+
+# data + out directories
+DATA_DIR = configs["training_params"]["data_dir"]
+MODEL_DIR = configs["training_params"]["model_dir"]
+
+
+### CONSTRUCT MODEL NAME AND OUTPUT PATH
+MODEL_NAME += "_nc_%d_nlyr_%d"%(HIDDEN_CHANNELS, NUM_LAYERS)
+
+
+### SAVE CONFIGS TO OUTDIR
 
 
 ### INITIALISE DATA
 
-dataset = PygNodePropPredDataset('ogbn-proteins', root='/data101/makinen/ogbn/')
+dataset = PygNodePropPredDataset('ogbn-proteins', root=DATA_DIR)
 splitted_idx = dataset.get_idx_split()
 data = dataset[0]
 data.node_species = None
@@ -74,9 +97,9 @@ class DeeperGCN(torch.nn.Module):
 
         return self.lin(x)
 
-
+# initialise model
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model = DeeperGCN(hidden_channels=64, num_layers=28).to(device)
+model = DeeperGCN(hidden_channels=HIDDEN_CHANNELS, num_layers=NUM_LAYERS).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 criterion = torch.nn.BCEWithLogitsLoss()
 evaluator = Evaluator('ogbn-proteins')
@@ -153,3 +176,13 @@ for epoch in range(1, 1001):
     train_rocauc, valid_rocauc, test_rocauc = test()
     print(f'Loss: {loss:.4f}, Train: {train_rocauc:.4f}, '
           f'Val: {valid_rocauc:.4f}, Test: {test_rocauc:.4f}')
+
+
+# save everything
+
+
+
+
+outdir = MODEL_DIR + MODEL_NAME
+
+torch.save(model.state_dict(), outdir)
