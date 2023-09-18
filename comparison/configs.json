@@ -1,7 +1,7 @@
 {
     "training_params" : {
-        "epochs": 100,
-        "learning_rate": 0.01,
+        "epochs": 1000,
+        "learning_rate": 0.001,
         "data_dir": "/data101/makinen/ogbn/",
         "model_dir": "/data101/makinen/graph_fishnets/models/"
     },
