@@ -22,6 +22,10 @@ from torch_geometric.nn.dense.linear import Linear
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
 def fill_triangular_torch(x):
     m = x.shape[0] # should be n * (n+1) / 2
     # solve for n

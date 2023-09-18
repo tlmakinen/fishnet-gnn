@@ -10,9 +10,9 @@ from torch_geometric.utils import scatter
 
 import sys,os
 import json
-
 import cloudpickle as pickle
 
+from nets import *
 
 def save_obj(obj, name ):
     with open(name + '.pkl', 'wb') as f:
@@ -134,6 +134,10 @@ if LOAD_MODEL:
     model.load_state_dict(torch.load(MODEL_PATH))
     model.eval()
     history = load_obj(MODEL_DIR + MODEL_NAME + "history.pkl")
+
+
+# print out model complexity
+print("number of learnable parameters in model: ", count_parameters(model))
 
 def train(epoch):
     model.train()

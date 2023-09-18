@@ -24,6 +24,7 @@ def load_obj(name):
         return pickle.load(f)
 
 
+
 ### SPECIFY WHICH MODEL WE'RE RUNNING
 model_size = sys.argv[1]
 LOAD_MODEL = bool(int(sys.argv[2]))
@@ -36,14 +37,17 @@ with open(config_file_path) as f:
         configs = json.load(f)
 
 
+# FIX RANDOM SEED
+seed = configs["training_params"]["seed"]
+torch.manual_seed(seed)
 
 
 # model stuff
-HIDDEN_CHANNELS = configs["model_params"]["default_gcn"][model_size]["hidden_channels"]
-NUM_LAYERS = configs["model_params"]["default_gcn"][model_size]["num_layers"]
-FISHNETS_N_P = configs["model_params"]["default_gcn"][model_size]["fishnets_n_p"]
+HIDDEN_CHANNELS = configs["model_params"]["fishnet_gcn"][model_size]["hidden_channels"]
+NUM_LAYERS = configs["model_params"]["fishnet_gcn"][model_size]["num_layers"]
+FISHNETS_N_P = configs["model_params"]["fishnet_gcn"][model_size]["fishnets_n_p"]
 
-MODEL_NAME = configs["model_params"]["default_gcn"][model_size]["name"]
+MODEL_NAME = configs["model_params"]["fishnet_gcn"][model_size]["name"]
 
 # optimizer schedule
 LEARNING_RATE = configs["training_params"]["learning_rate"]
@@ -152,6 +156,10 @@ if LOAD_MODEL:
     model.load_state_dict(torch.load(MODEL_PATH))
     model.eval()
     history = load_obj(MODEL_DIR + MODEL_NAME + "history.pkl")
+
+
+# print out model complexity
+print("number of learnable parameters in model: ", count_parameters(model))
 
 def train(epoch):
     model.train()
