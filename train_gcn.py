@@ -11,16 +11,30 @@ from torch_geometric.utils import scatter
 import sys,os
 import json
 
+import cloudpickle as pickle
+
+
+def save_obj(obj, name ):
+    with open(name + '.pkl', 'wb') as f:
+        pickle.dump(obj, f)
+        
+def load_obj(name):
+    with open(name, 'rb') as f:
+        return pickle.load(f)
+
 
 ### SPECIFY WHICH MODEL WE'RE RUNNING
 model_size = sys.argv[1]
+LOAD_MODEL = bool(int(sys.argv[2]))
 
 
 ### READ IN CONFIGS
-config_file_path = './configs/configs.json'
+config_file_path = './comparison/configs.json'
 
 with open(config_file_path) as f:
         configs = json.load(f)
+
+
 
 
 # model stuff
@@ -28,16 +42,27 @@ HIDDEN_CHANNELS = configs["model_params"]["default_gcn"][model_size]["hidden_cha
 NUM_LAYERS = configs["model_params"]["default_gcn"][model_size]["num_layers"]
 MODEL_NAME = configs["model_params"]["default_gcn"][model_size]["name"]
 
+# optimizer schedule
+LEARNING_RATE = configs["training_params"]["learning_rate"]
+EPOCHS = int(configs["training_params"]["epochs"])
+
 # data + out directories
 DATA_DIR = configs["training_params"]["data_dir"]
 MODEL_DIR = configs["training_params"]["model_dir"]
 
 
 ### CONSTRUCT MODEL NAME AND OUTPUT PATH
-MODEL_NAME += "_nc_%d_nlyr_%d"%(HIDDEN_CHANNELS, NUM_LAYERS)
+MODEL_NAME += "nc_%d_nlyr_%d"%(HIDDEN_CHANNELS, NUM_LAYERS)
+
+MODEL_PATH = MODEL_DIR + MODEL_NAME
+
+print("training %s, saving to %s"%(MODEL_NAME, MODEL_DIR))
+print("training for %d epochs"%(EPOCHS))
 
 
 ### SAVE CONFIGS TO OUTDIR
+with open(MODEL_DIR + 'confings_%s.json'%(MODEL_NAME), 'w') as f:
+    json.dump(configs, f)
 
 
 ### INITIALISE DATA
@@ -100,10 +125,15 @@ class DeeperGCN(torch.nn.Module):
 # initialise model
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = DeeperGCN(hidden_channels=HIDDEN_CHANNELS, num_layers=NUM_LAYERS).to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 criterion = torch.nn.BCEWithLogitsLoss()
 evaluator = Evaluator('ogbn-proteins')
 
+
+if LOAD_MODEL:
+    model.load_state_dict(torch.load(MODEL_PATH))
+    model.eval()
+    history = load_obj(MODEL_DIR + MODEL_NAME + "history.pkl")
 
 def train(epoch):
     model.train()
@@ -170,19 +200,52 @@ def test():
 
     return train_rocauc, valid_rocauc, test_rocauc
 
+# training history
 
-for epoch in range(1, 1001):
+history = {
+    "train_aucs": [],
+    "valid_aucs": [],
+    "test_aucs": [],
+    "losses": []
+}
+
+best_rocauc = 0.0
+
+# training loop
+for epoch in range(1, EPOCHS + 1):
     loss = train(epoch)
     train_rocauc, valid_rocauc, test_rocauc = test()
     print(f'Loss: {loss:.4f}, Train: {train_rocauc:.4f}, '
           f'Val: {valid_rocauc:.4f}, Test: {test_rocauc:.4f}')
 
+    history["losses"].append(loss)
+    history["train_aucs"].append(train_rocauc)
+    history["valid_aucs"].append(valid_rocauc)
+    history["test_aucs"].append(test_rocauc)
+
+    # save best model
+    if test_rocauc > best_rocauc:
+        print("saving best model")
+        torch.save(model.state_dict(), MODEL_PATH + "_best")
+        # save training history
+        save_obj(history, MODEL_DIR + MODEL_NAME + "_history")
+        best_rocauc = test_rocauc
+
+
+    # save intermittently
+    if epoch % 10 == 0:
+        torch.save(model.state_dict(), MODEL_PATH)
+
+        # save training history
+        save_obj(history, MODEL_DIR + MODEL_NAME + "_history")
 
 # save everything
+torch.save(model.state_dict(), MODEL_PATH)
+
+# save training history
+save_obj(history, MODEL_DIR + MODEL_NAME + "_history")
 
 
 
 
-outdir = MODEL_DIR + MODEL_NAME
 
-torch.save(model.state_dict(), outdir)
