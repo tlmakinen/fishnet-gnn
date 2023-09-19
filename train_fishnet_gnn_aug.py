@@ -8,11 +8,19 @@ from torch_geometric.loader import RandomNodeLoader
 from torch_geometric.nn import DeepGCNLayer, GENConv
 from torch_geometric.utils import scatter
 
+from torch.optim.lr_scheduler import OneCycleLR
+
+from accelerate import Accelerator
+
+
+
+
 import sys,os
 import json
 import cloudpickle as pickle
 
-from nets import *
+from nets import * 
+
 
 def save_obj(obj, name ):
     with open(name + '.pkl', 'wb') as f:
@@ -23,6 +31,7 @@ def load_obj(name):
         return pickle.load(f)
 
 
+
 ### SPECIFY WHICH MODEL WE'RE RUNNING
 model_size = sys.argv[2]
 LOAD_MODEL = bool(int(sys.argv[3]))
@@ -31,21 +40,23 @@ LOAD_MODEL = bool(int(sys.argv[3]))
 ### READ IN CONFIGS
 config_file_path = sys.argv[1] #'./comparison/configs.json'
 
-
 with open(config_file_path) as f:
         configs = json.load(f)
+
 
 # FIX RANDOM SEED
 seed = configs["training_params"]["seed"]
 torch.manual_seed(seed)
 
 
-
-
 # model stuff
-HIDDEN_CHANNELS = configs["model_params"]["default_gcn"][model_size]["hidden_channels"]
-NUM_LAYERS = configs["model_params"]["default_gcn"][model_size]["num_layers"]
-MODEL_NAME = configs["model_params"]["default_gcn"][model_size]["name"]
+HIDDEN_CHANNELS = configs["model_params"]["fishnet_gcn"][model_size]["hidden_channels"]
+NUM_LAYERS = configs["model_params"]["fishnet_gcn"][model_size]["num_layers"]
+FISHNETS_N_P = configs["model_params"]["fishnet_gcn"][model_size]["fishnets_n_p"]
+
+MODEL_NAME = configs["model_params"]["fishnet_gcn"][model_size]["name"]
+
+TEST_BATCHING = configs["model_params"]["fishnet_gcn"][model_size]["test_batching"]
 
 # optimizer schedule
 LEARNING_RATE = configs["training_params"]["learning_rate"]
@@ -90,20 +101,31 @@ for split in ['train', 'valid', 'test']:
 
 train_loader = RandomNodeLoader(data, num_parts=40, shuffle=True,
                                 num_workers=5)
-test_loader = RandomNodeLoader(data, num_parts=5, num_workers=5)
+# here we don't want to blow up memory batching the test set
+test_loader = RandomNodeLoader(data, num_parts=TEST_BATCHING, num_workers=5)
 
 
-class DeeperGCN(torch.nn.Module):
-    def __init__(self, hidden_channels, num_layers):
+
+class FishnetGCN(torch.nn.Module):
+    def __init__(self, n_p, num_layers, hidden_channels=None):
         super().__init__()
+        
+        # need some extra channels for the fisher matrix
+        fishnets_channels = n_p + ((n_p * (n_p + 1)) // 2)
+        
+        if hidden_channels is None:
+            hidden_channels = n_p
 
         self.node_encoder = Linear(data.x.size(-1), hidden_channels)
         self.edge_encoder = Linear(data.edge_attr.size(-1), hidden_channels)
 
         self.layers = torch.nn.ModuleList()
         for i in range(1, num_layers + 1):
-            conv = GENConv(hidden_channels, hidden_channels, aggr='softmax',
-                           t=1.0, learn_t=True, num_layers=2, norm='layer')
+            conv = GENConv(hidden_channels, hidden_channels, 
+                           aggr=FishnetsAggregation(in_size=hidden_channels, n_p=n_p),
+                           t=1.0, learn_t=False, 
+                           num_layers=2, norm='layer')
+            # output of conv is n_p size
             norm = LayerNorm(hidden_channels, elementwise_affine=True)
             act = ReLU(inplace=True)
 
@@ -116,11 +138,16 @@ class DeeperGCN(torch.nn.Module):
     def forward(self, x, edge_index, edge_attr):
         x = self.node_encoder(x)
         edge_attr = self.edge_encoder(edge_attr)
+        
+        #print("x", x.shape)
 
         x = self.layers[0].conv(x, edge_index, edge_attr)
+        
+        #print("x", x.shape)
 
         for layer in self.layers[1:]:
             x = layer(x, edge_index, edge_attr)
+            #print("x", x.shape)
 
         x = self.layers[0].act(self.layers[0].norm(x))
         x = F.dropout(x, p=0.1, training=self.training)
@@ -128,11 +155,19 @@ class DeeperGCN(torch.nn.Module):
         return self.lin(x)
 
 # initialise model
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model = DeeperGCN(hidden_channels=HIDDEN_CHANNELS, num_layers=NUM_LAYERS).to(device)
+model = FishnetGCN(n_p=FISHNETS_N_P, num_layers=NUM_LAYERS, hidden_channels=HIDDEN_CHANNELS).to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 criterion = torch.nn.BCEWithLogitsLoss()
 evaluator = Evaluator('ogbn-proteins')
+
+lr_scheduler = OneCycleLR(optimizer, max_lr=1e-2, total_steps=EPOCHS*len(train_loader), pct_start=0.15, final_div_factor=1e3)
+
+accelerator = Accelerator()
+
+model, optimizer, training_dataloader, scheduler = accelerator.prepare(
+                model, optimizer, train_loader, lr_scheduler)
 
 
 if LOAD_MODEL:
@@ -156,8 +191,10 @@ def train(epoch):
         data = data.to(device)
         out = model(data.x, data.edge_index, data.edge_attr)
         loss = criterion(out[data.train_mask], data.y[data.train_mask])
-        loss.backward()
-        optimizer.step()
+        #loss.backward()
+        accelerator.backward(loss)
+        optimizer.step() 
+        lr_scheduler.step()
 
         total_loss += float(loss) * int(data.train_mask.sum())
         total_examples += int(data.train_mask.sum())

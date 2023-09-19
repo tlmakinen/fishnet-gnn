@@ -26,12 +26,12 @@ def load_obj(name):
 
 
 ### SPECIFY WHICH MODEL WE'RE RUNNING
-model_size = sys.argv[1]
-LOAD_MODEL = bool(int(sys.argv[2]))
+model_size = sys.argv[2]
+LOAD_MODEL = bool(int(sys.argv[3]))
 
 
 ### READ IN CONFIGS
-config_file_path = './comparison/configs.json'
+config_file_path = sys.argv[1] #'./comparison/configs.json'
 
 with open(config_file_path) as f:
         configs = json.load(f)

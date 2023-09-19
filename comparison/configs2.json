@@ -1,0 +1,44 @@
+{
+    "training_params" : {
+        "epochs": 1000,
+        "learning_rate": 0.001,
+        "data_dir": "/data101/makinen/ogbn/",
+        "model_dir": "/data101/makinen/graph_fishnets/models/comparison/",
+        "seed": 42
+    },
+
+    "model_params":  {
+            "default_gcn": {
+                "small_model": {
+                    "hidden_channels": 24,
+                    "num_layers": 3,
+                    "name": "gcn_small_",
+                    "test_batching": 5
+                },
+                "big_model": {
+                    "hidden_channels": 64,
+                    "num_layers": 28,
+                    "name": "gcn_big_",
+                    "test_batching": 5
+                }
+            },
+            
+            "fishnet_gcn": {     
+                "small_model": {
+                    "hidden_channels": 24,
+                    "num_layers": 3,
+                    "fishnets_n_p": 10,
+                    "name": "fishnet_small_",
+                    "test_batching": 5
+                },
+                "big_model": {
+                    "hidden_channels": 64,
+                    "num_layers": 14,
+                    "fishnets_n_p": 10,
+                    "name": "fishnet_big_",
+                    "test_batching": 10
+                }
+            }
+        }
+
+}

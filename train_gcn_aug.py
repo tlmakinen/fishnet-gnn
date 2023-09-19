@@ -8,6 +8,9 @@ from torch_geometric.loader import RandomNodeLoader
 from torch_geometric.nn import DeepGCNLayer, GENConv
 from torch_geometric.utils import scatter
 
+from torch.optim.lr_scheduler import OneCycleLR
+from accelerate import Accelerator
+
 import sys,os
 import json
 import cloudpickle as pickle
@@ -35,10 +38,10 @@ config_file_path = sys.argv[1] #'./comparison/configs.json'
 with open(config_file_path) as f:
         configs = json.load(f)
 
+
 # FIX RANDOM SEED
 seed = configs["training_params"]["seed"]
 torch.manual_seed(seed)
-
 
 
 
@@ -134,6 +137,13 @@ optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 criterion = torch.nn.BCEWithLogitsLoss()
 evaluator = Evaluator('ogbn-proteins')
 
+lr_scheduler = OneCycleLR(optimizer, max_lr=1e-2, total_steps=EPOCHS*len(train_loader), pct_start=0.15, final_div_factor=1e3)
+
+accelerator = Accelerator()
+
+model, optimizer, training_dataloader, scheduler = accelerator.prepare(
+                model, optimizer, train_loader, lr_scheduler)
+
 
 if LOAD_MODEL:
     model.load_state_dict(torch.load(MODEL_PATH))
@@ -156,8 +166,10 @@ def train(epoch):
         data = data.to(device)
         out = model(data.x, data.edge_index, data.edge_attr)
         loss = criterion(out[data.train_mask], data.y[data.train_mask])
-        loss.backward()
-        optimizer.step()
+        #loss.backward()
+        accelerator.backward(loss)
+        optimizer.step() 
+        lr_scheduler.step()
 
         total_loss += float(loss) * int(data.train_mask.sum())
         total_examples += int(data.train_mask.sum())
