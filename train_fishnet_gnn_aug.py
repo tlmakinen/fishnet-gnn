@@ -9,10 +9,7 @@ from torch_geometric.nn import DeepGCNLayer, GENConv
 from torch_geometric.utils import scatter
 
 from torch.optim.lr_scheduler import OneCycleLR
-
 from accelerate import Accelerator
-
-
 
 
 import sys,os
@@ -69,7 +66,6 @@ MODEL_DIR = configs["training_params"]["model_dir"]
 
 ### CONSTRUCT MODEL NAME AND OUTPUT PATH
 MODEL_NAME += "nc_%d_nlyr_%d"%(HIDDEN_CHANNELS, NUM_LAYERS)
-
 MODEL_PATH = MODEL_DIR + MODEL_NAME
 
 print("training %s, saving to %s"%(MODEL_NAME, MODEL_DIR))

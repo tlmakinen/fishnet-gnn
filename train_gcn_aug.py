@@ -43,6 +43,9 @@ with open(config_file_path) as f:
 seed = configs["training_params"]["seed"]
 torch.manual_seed(seed)
 
+# SHOULD WE DO A LR SCHEDULE ?
+do_lr_schedule = bool(configs["training_params"]["do_onecycle_LR"])
+
 
 
 # model stuff

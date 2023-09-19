@@ -7,6 +7,8 @@ from tqdm import tqdm
 from torch_geometric.loader import RandomNodeLoader
 from torch_geometric.nn import DeepGCNLayer, GENConv
 from torch_geometric.utils import scatter
+from accelerate import Accelerator
+
 
 import sys,os
 import json
@@ -134,6 +136,11 @@ optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 criterion = torch.nn.BCEWithLogitsLoss()
 evaluator = Evaluator('ogbn-proteins')
 
+# accelerate code with accelerator
+accelerator = Accelerator()
+model, optimizer, training_dataloader = accelerator.prepare(
+                model, optimizer, train_loader)
+
 
 if LOAD_MODEL:
     model.load_state_dict(torch.load(MODEL_PATH))
@@ -235,7 +242,8 @@ for epoch in range(1, EPOCHS + 1):
     # save best model
     if test_rocauc > best_rocauc:
         print("saving best model")
-        torch.save(model.state_dict(), MODEL_PATH + "_best")
+        #torch.save(model.state_dict(), MODEL_PATH + "_best")
+        accelerator.save_model(model, MODEL_PATH)
         # save training history
         save_obj(history, MODEL_DIR + MODEL_NAME + "_history")
         best_rocauc = test_rocauc
@@ -243,13 +251,15 @@ for epoch in range(1, EPOCHS + 1):
 
     # save intermittently
     if epoch % 10 == 0:
-        torch.save(model.state_dict(), MODEL_PATH)
+        #torch.save(model.state_dict(), MODEL_PATH)
+        accelerator.save_model(model, MODEL_PATH)
 
         # save training history
         save_obj(history, MODEL_DIR + MODEL_NAME + "_history")
 
 # save everything
-torch.save(model.state_dict(), MODEL_PATH)
+#torch.save(model.state_dict(), MODEL_PATH)
+accelerator.save_model(model, MODEL_PATH)
 
 # save training history
 save_obj(history, MODEL_DIR + MODEL_NAME + "_history")

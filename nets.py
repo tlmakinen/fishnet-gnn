@@ -17,8 +17,19 @@ from torch.nn import (
     Sequential,
 )
 from torch_geometric.nn.dense.linear import Linear
+import cloudpickle as pickle
+
+def save_obj(obj, name ):
+    with open(name + '.pkl', 'wb') as f:
+        pickle.dump(obj, f)
+        
+def load_obj(name):
+    with open(name, 'rb') as f:
+        return pickle.load(f)
 
 
+
+# set device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
@@ -148,3 +159,86 @@ class FishnetsAggregation(Aggregation):
         return mle
 
 
+class FishnetGCN(torch.nn.Module):
+    def __init__(self, n_p, num_layers, hidden_channels=None):
+        super().__init__()
+        
+        # need some extra channels for the fisher matrix
+        fishnets_channels = n_p + ((n_p * (n_p + 1)) // 2)
+        
+        if hidden_channels is None:
+            hidden_channels = n_p
+
+        self.node_encoder = Linear(data.x.size(-1), hidden_channels)
+        self.edge_encoder = Linear(data.edge_attr.size(-1), hidden_channels)
+
+        self.layers = torch.nn.ModuleList()
+        for i in range(1, num_layers + 1):
+            conv = GENConv(hidden_channels, hidden_channels, 
+                           aggr=FishnetsAggregation(in_size=hidden_channels, n_p=n_p),
+                           t=1.0, learn_t=False, 
+                           num_layers=2, norm='layer')
+            # output of conv is n_p size
+            norm = LayerNorm(hidden_channels, elementwise_affine=True)
+            act = ReLU(inplace=True)
+
+            layer = DeepGCNLayer(conv, norm, act, block='res+', dropout=0.1,
+                                 ckpt_grad=i % 3)
+            self.layers.append(layer)
+
+        self.lin = Linear(hidden_channels, data.y.size(-1))
+
+    def forward(self, x, edge_index, edge_attr):
+        x = self.node_encoder(x)
+        edge_attr = self.edge_encoder(edge_attr)
+        
+        #print("x", x.shape)
+
+        x = self.layers[0].conv(x, edge_index, edge_attr)
+        
+        #print("x", x.shape)
+
+        for layer in self.layers[1:]:
+            x = layer(x, edge_index, edge_attr)
+            #print("x", x.shape)
+
+        x = self.layers[0].act(self.layers[0].norm(x))
+        x = F.dropout(x, p=0.1, training=self.training)
+
+        return self.lin(x)
+    
+    
+
+class DeeperGCN(torch.nn.Module):
+    def __init__(self, hidden_channels, num_layers):
+        super().__init__()
+
+        self.node_encoder = Linear(data.x.size(-1), hidden_channels)
+        self.edge_encoder = Linear(data.edge_attr.size(-1), hidden_channels)
+
+        self.layers = torch.nn.ModuleList()
+        for i in range(1, num_layers + 1):
+            conv = GENConv(hidden_channels, hidden_channels, aggr='softmax',
+                           t=1.0, learn_t=True, num_layers=2, norm='layer')
+            norm = LayerNorm(hidden_channels, elementwise_affine=True)
+            act = ReLU(inplace=True)
+
+            layer = DeepGCNLayer(conv, norm, act, block='res+', dropout=0.1,
+                                 ckpt_grad=i % 3)
+            self.layers.append(layer)
+
+        self.lin = Linear(hidden_channels, data.y.size(-1))
+
+    def forward(self, x, edge_index, edge_attr):
+        x = self.node_encoder(x)
+        edge_attr = self.edge_encoder(edge_attr)
+
+        x = self.layers[0].conv(x, edge_index, edge_attr)
+
+        for layer in self.layers[1:]:
+            x = layer(x, edge_index, edge_attr)
+
+        x = self.layers[0].act(self.layers[0].norm(x))
+        x = F.dropout(x, p=0.1, training=self.training)
+
+        return self.lin(x)

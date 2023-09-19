@@ -7,6 +7,8 @@ from tqdm import tqdm
 from torch_geometric.loader import RandomNodeLoader
 from torch_geometric.nn import DeepGCNLayer, GENConv
 from torch_geometric.utils import scatter
+from accelerate import Accelerator
+
 
 import sys,os
 import json
@@ -49,6 +51,9 @@ FISHNETS_N_P = configs["model_params"]["fishnet_gcn"][model_size]["fishnets_n_p"
 
 MODEL_NAME = configs["model_params"]["fishnet_gcn"][model_size]["name"]
 
+TEST_BATCHING = configs["model_params"]["fishnet_gcn"][model_size]["test_batching"]
+
+
 # optimizer schedule
 LEARNING_RATE = configs["training_params"]["learning_rate"]
 EPOCHS = int(configs["training_params"]["epochs"])
@@ -60,7 +65,6 @@ MODEL_DIR = configs["training_params"]["model_dir"]
 
 ### CONSTRUCT MODEL NAME AND OUTPUT PATH
 MODEL_NAME += "nc_%d_nlyr_%d"%(HIDDEN_CHANNELS, NUM_LAYERS)
-
 MODEL_PATH = MODEL_DIR + MODEL_NAME
 
 print("training %s, saving to %s"%(MODEL_NAME, MODEL_DIR))
@@ -92,7 +96,7 @@ for split in ['train', 'valid', 'test']:
 
 train_loader = RandomNodeLoader(data, num_parts=40, shuffle=True,
                                 num_workers=5)
-test_loader = RandomNodeLoader(data, num_parts=5, num_workers=5)
+test_loader = RandomNodeLoader(data, num_parts=TEST_BATCHING, num_workers=5)
 
 
 class FishnetGCN(torch.nn.Module):
@@ -151,6 +155,11 @@ optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 criterion = torch.nn.BCEWithLogitsLoss()
 evaluator = Evaluator('ogbn-proteins')
 
+# accelerate code with accelerator
+accelerator = Accelerator()
+model, optimizer, training_dataloader = accelerator.prepare(
+                model, optimizer, train_loader)
+
 
 if LOAD_MODEL:
     model.load_state_dict(torch.load(MODEL_PATH))
@@ -173,8 +182,9 @@ def train(epoch):
         data = data.to(device)
         out = model(data.x, data.edge_index, data.edge_attr)
         loss = criterion(out[data.train_mask], data.y[data.train_mask])
-        loss.backward()
-        optimizer.step()
+        #loss.backward()
+        accelerator.backward(loss)
+        optimizer.step() 
 
         total_loss += float(loss) * int(data.train_mask.sum())
         total_examples += int(data.train_mask.sum())
@@ -252,7 +262,8 @@ for epoch in range(1, EPOCHS + 1):
     # save best model
     if test_rocauc > best_rocauc:
         print("saving best model")
-        torch.save(model.state_dict(), MODEL_PATH + "_best")
+        #torch.save(model.state_dict(), MODEL_PATH + "_best")
+        accelerator.save_model(model, MODEL_PATH)
         # save training history
         save_obj(history, MODEL_DIR + MODEL_NAME + "_history")
         best_rocauc = test_rocauc
@@ -260,13 +271,15 @@ for epoch in range(1, EPOCHS + 1):
 
     # save intermittently
     if epoch % 10 == 0:
-        torch.save(model.state_dict(), MODEL_PATH)
+        #torch.save(model.state_dict(), MODEL_PATH)
+        accelerator.save_model(model, MODEL_PATH)
 
         # save training history
         save_obj(history, MODEL_DIR + MODEL_NAME + "_history")
 
 # save everything
-torch.save(model.state_dict(), MODEL_PATH)
+#torch.save(model.state_dict(), MODEL_PATH)
+accelerator.save_model(model, MODEL_PATH)
 
 # save training history
 save_obj(history, MODEL_DIR + MODEL_NAME + "_history")
