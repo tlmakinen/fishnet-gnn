@@ -3,7 +3,7 @@
         "epochs": 1000,
         "learning_rate": 0.001,
         "data_dir": "/data101/makinen/ogbn/",
-        "model_dir": "/data101/makinen/graph_fishnets/models/vanilla/",
+        "model_dir": "/data101/makinen/graph_fishnets/models/testing_main/",
         "seed": 42,
         "do_lr_scheduler": 0,
         "load_state": "state"
@@ -35,7 +35,7 @@
                 },
                 "big_model": {
                     "hidden_channels": 64,
-                    "num_layers": 14,
+                    "num_layers": 20,
                     "fishnets_n_p": 10,
                     "name": "fishnet_big_",
                     "test_batching": 10

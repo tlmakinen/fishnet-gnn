@@ -3,7 +3,7 @@
         "epochs": 1000,
         "learning_rate": 0.001,
         "data_dir": "/data101/makinen/ogbn/",
-        "model_dir": "/data101/makinen/graph_fishnets/models/vanilla/",
+        "model_dir": "/data101/makinen/graph_fishnets/models/main_run/",
         "seed": 42,
         "do_lr_scheduler": 0,
         "load_state": "state"
