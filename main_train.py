@@ -34,6 +34,7 @@ config_file_path = sys.argv[1] #'./comparison/configs.json'
 model_type = int(sys.argv[2])
 model_size = sys.argv[3]
 LOAD_MODEL = bool(int(sys.argv[4]))
+BEST = True if sys.argv[5] == "best" else False
 
 if model_type == 0:
     model_type = "fishnet_gcn"
@@ -137,14 +138,7 @@ evaluator = Evaluator('ogbn-proteins')
 # accelerate code with accelerator
 accelerator = Accelerator(project_dir=MODEL_PATH)
 
-# if we want to load a model we'll do it here
-if LOAD_MODEL:
-    print("LOADING MODEL !!")
-    accelerator = Accelerator(project_dir=MODEL_PATH)
-    #train_dataloader = accelerator.prepare(train_loader)
-    #accelerator.load_state("random_states_0.pkl")
-    accelerator.load_state(MODEL_PATH)
-    history = load_obj(MODEL_DIR + MODEL_NAME + "_history.pkl")
+
 
 
 if DO_SCHEDULER:
@@ -158,8 +152,25 @@ else:
     model, optimizer, training_dataloader = accelerator.prepare(
                     model, optimizer, train_loader)
     
+
+# if we want to load a model we'll do it here AFTER insatiating the model
+if LOAD_MODEL:
+    print("LOADING MODEL !!")
+    accelerator = Accelerator(project_dir=MODEL_PATH)
+
+    # load best model ?
+    if BEST:
+        print("loading best model")
+        accelerator.load_state(MODEL_PATH + "_best")
+
+    else: 
+        accelerator.load_state(MODEL_PATH)
+
+    history = load_obj(MODEL_DIR + MODEL_NAME + "_history.pkl")
+    
 # Save the starting state
-accelerator.save_state(MODEL_PATH)
+else:
+    accelerator.save_state(MODEL_PATH)
 
 
 
@@ -167,7 +178,7 @@ accelerator.save_state(MODEL_PATH)
 print("number of learnable parameters in model: ", count_parameters(model))
 
 def train(epoch):
-    model.train()
+    #model.train()
 
     pbar = tqdm(total=len(train_loader), position=0)
     pbar.set_description(f'Training epoch: {epoch:04d}')
@@ -261,7 +272,7 @@ for epoch in range(1, EPOCHS + 1):
     if test_rocauc > best_rocauc:
         print("saving best model")
         #torch.save(model.state_dict(), MODEL_PATH + "_best")
-        accelerator.save_model(model, MODEL_PATH)
+        accelerator.save_model(model, MODEL_PATH + "_best")
         # save training history
         save_obj(history, MODEL_DIR + MODEL_NAME + "_history")
         best_rocauc = test_rocauc
