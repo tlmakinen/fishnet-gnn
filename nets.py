@@ -1,12 +1,19 @@
 import math
 from typing import List, Optional, Tuple, Union
 
+
 import torch
+import torch.nn.functional as F
+from ogb.nodeproppred import Evaluator, PygNodePropPredDataset
+from torch.nn import LayerNorm, Linear, ReLU
+from tqdm import tqdm
+
 from torch import Tensor
 from torch.nn import Parameter
 
+from torch_geometric.nn import DeepGCNLayer, GENConv
 from torch_geometric.nn.aggr import Aggregation
-from torch_geometric.utils import softmax
+from torch_geometric.utils import softmax, scatter
 from torch import Tensor
 from torch.nn import (
     BatchNorm1d,
@@ -17,6 +24,7 @@ from torch.nn import (
     Sequential,
 )
 from torch_geometric.nn.dense.linear import Linear
+
 import cloudpickle as pickle
 
 def save_obj(obj, name ):
@@ -160,7 +168,8 @@ class FishnetsAggregation(Aggregation):
 
 
 class FishnetGCN(torch.nn.Module):
-    def __init__(self, n_p, num_layers, hidden_channels=None):
+    def __init__(self, n_p, num_layers, hidden_channels=None,  
+                 xdim=8, edgedim=8, ydim=112):
         super().__init__()
         
         # need some extra channels for the fisher matrix
@@ -169,8 +178,8 @@ class FishnetGCN(torch.nn.Module):
         if hidden_channels is None:
             hidden_channels = n_p
 
-        self.node_encoder = Linear(data.x.size(-1), hidden_channels)
-        self.edge_encoder = Linear(data.edge_attr.size(-1), hidden_channels)
+        self.node_encoder = Linear(xdim, hidden_channels)
+        self.edge_encoder = Linear(edgedim, hidden_channels)
 
         self.layers = torch.nn.ModuleList()
         for i in range(1, num_layers + 1):
@@ -186,7 +195,7 @@ class FishnetGCN(torch.nn.Module):
                                  ckpt_grad=i % 3)
             self.layers.append(layer)
 
-        self.lin = Linear(hidden_channels, data.y.size(-1))
+        self.lin = Linear(hidden_channels, ydim)
 
     def forward(self, x, edge_index, edge_attr):
         x = self.node_encoder(x)
@@ -210,11 +219,12 @@ class FishnetGCN(torch.nn.Module):
     
 
 class DeeperGCN(torch.nn.Module):
-    def __init__(self, hidden_channels, num_layers):
+    def __init__(self, hidden_channels, num_layers, 
+                 xdim=8, edgedim=8, ydim=112):
         super().__init__()
 
-        self.node_encoder = Linear(data.x.size(-1), hidden_channels)
-        self.edge_encoder = Linear(data.edge_attr.size(-1), hidden_channels)
+        self.node_encoder = Linear(xdim, hidden_channels)
+        self.edge_encoder = Linear(edgedim, hidden_channels)
 
         self.layers = torch.nn.ModuleList()
         for i in range(1, num_layers + 1):
@@ -227,7 +237,7 @@ class DeeperGCN(torch.nn.Module):
                                  ckpt_grad=i % 3)
             self.layers.append(layer)
 
-        self.lin = Linear(hidden_channels, data.y.size(-1))
+        self.lin = Linear(hidden_channels, ydim)
 
     def forward(self, x, edge_index, edge_attr):
         x = self.node_encoder(x)
