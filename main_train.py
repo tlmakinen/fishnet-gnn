@@ -67,6 +67,7 @@ DO_SCHEDULER = bool(int(configs["training_params"]["do_lr_scheduler"]))
 # data + out directories
 DATA_DIR = configs["training_params"]["data_dir"]
 MODEL_DIR = configs["training_params"]["model_dir"]
+LOAD_DIR = configs["training_params"]["load_dir"]
 
 
 if not os.path.exists(MODEL_DIR):
@@ -155,18 +156,18 @@ else:
 
 # if we want to load a model we'll do it here AFTER insatiating the model
 if LOAD_MODEL:
-    print("LOADING MODEL !!")
-    accelerator = Accelerator(project_dir=MODEL_PATH)
+    print("LOADING MODEL FROM  !!", LOAD_DIR)
+    accelerator = Accelerator(project_dir=LOAD_DIR)
 
     # load best model ?
     if BEST:
         print("loading best model")
-        accelerator.load_state(MODEL_PATH + "_best")
+        accelerator.load_state(LOAD_DIR + "_best")
 
     else: 
-        accelerator.load_state(MODEL_PATH)
+        accelerator.load_state(LOAD_DIR)
 
-    history = load_obj(MODEL_DIR + MODEL_NAME + "_history.pkl")
+    history = load_obj(LOAD_DIR + MODEL_NAME + "_history.pkl")
     
 # Save the starting state
 else:
