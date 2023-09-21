@@ -78,13 +78,15 @@ if not os.path.exists(MODEL_DIR):
 ### CONSTRUCT MODEL NAME AND OUTPUT PATH
 MODEL_NAME += "nc_%d_nlyr_%d"%(HIDDEN_CHANNELS, NUM_LAYERS)
 MODEL_PATH = MODEL_DIR + MODEL_NAME
-
+LOAD_PATH = LOAD_DIR + MODEL_NAME
 
 
 ### START THE PROGRAMME
 
 print("training %s, saving to %s"%(MODEL_NAME, MODEL_DIR))
 print("training for %d epochs"%(EPOCHS))
+if LOAD_MODEL:
+    print("loading model from %s"%(LOAD_DIR) )
 
 
 ### SAVE CONFIGS TO OUTDIR
@@ -137,41 +139,50 @@ criterion = torch.nn.BCEWithLogitsLoss()
 evaluator = Evaluator('ogbn-proteins')
 
 # accelerate code with accelerator
-accelerator = Accelerator(project_dir=MODEL_PATH)
+if LOAD_MODEL:
+    accel_path = LOAD_PATH
+else:
+    accel_path = MODEL_PATH
 
-
+accelerator = Accelerator(project_dir=accel_path)
 
 
 if DO_SCHEDULER:
     lr_scheduler = OneCycleLR(optimizer, max_lr=1e-2, total_steps=EPOCHS*len(train_loader), pct_start=0.15, final_div_factor=1e3)
-    model, optimizer, training_dataloader, scheduler = accelerator.prepare(
+    model, optimizer, train_loader, scheduler = accelerator.prepare(
                     model, optimizer, train_loader, lr_scheduler)
     # Register the LR scheduler
     accelerator.register_for_checkpointing(lr_scheduler)
     
 else:
-    model, optimizer, training_dataloader = accelerator.prepare(
+    model, optimizer, train_loader = accelerator.prepare(
                     model, optimizer, train_loader)
     
 
 # if we want to load a model we'll do it here AFTER insatiating the model
 if LOAD_MODEL:
-    print("LOADING MODEL FROM  !!", LOAD_DIR)
-    accelerator = Accelerator(project_dir=LOAD_DIR)
+    print("LOADING MODEL FROM  ", LOAD_PATH)
+    #accelerator = Accelerator(project_dir=LOAD_PATH)
 
     # load best model ?
     if BEST:
         print("loading best model")
-        accelerator.load_state(LOAD_DIR + "_best")
+        accelerator.load_state(LOAD_PATH + "_best")
 
     else: 
-        accelerator.load_state(LOAD_DIR)
+        accelerator.load_state(LOAD_PATH)
+    
+    model, optimizer, train_loader = accelerator.prepare(
+                model, optimizer, train_loader)
 
+    
+    # restart optimizer ?
     history = load_obj(LOAD_DIR + MODEL_NAME + "_history.pkl")
     
 # Save the starting state
 else:
     accelerator.save_state(MODEL_PATH)
+
 
 
 
@@ -259,6 +270,12 @@ best_rocauc = 0.0
 
 # training loop
 for epoch in range(1, EPOCHS + 1):
+
+    if LOAD_MODEL:
+        train_rocauc, valid_rocauc, test_rocauc = test()
+        print(f'loaded stats, Train: {train_rocauc:.4f}, '
+            f'Val: {valid_rocauc:.4f}, Test: {test_rocauc:.4f}')
+
     loss = train(epoch)
     train_rocauc, valid_rocauc, test_rocauc = test()
     print(f'Loss: {loss:.4f}, Train: {train_rocauc:.4f}, '
@@ -281,6 +298,7 @@ for epoch in range(1, EPOCHS + 1):
 
     # save intermittently
     if epoch % 10 == 0:
+        print("saving model")
         #torch.save(model.state_dict(), MODEL_PATH)
         accelerator.save_model(model, MODEL_PATH)
         accelerator.save_state(MODEL_PATH)
@@ -289,6 +307,7 @@ for epoch in range(1, EPOCHS + 1):
         save_obj(history, MODEL_DIR + MODEL_NAME + "_history")
 
 # save everything
+print("FINISHED TRAINING. SAVING EVERYTHING.")
 accelerator.save_model(model, MODEL_PATH)
 accelerator.save_state(MODEL_PATH)
 
