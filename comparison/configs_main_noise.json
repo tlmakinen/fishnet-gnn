@@ -1,0 +1,73 @@
+{
+    "training_params" : {
+        "epochs": 1200,
+        "learning_rate": 0.001,
+        "data_dir": "/data101/makinen/ogbn/",
+        "model_dir": "/data101/makinen/graph_fishnets/models/noise_comparison/",
+        "seed": 42,
+        "do_lr_scheduler": 0,
+        "load_dir": "/data101/makinen/graph_fishnets/models/noise_comparison/"
+    },
+    "noise_params": {
+        "train_min_N": 1,
+        "train_max_N": 10,
+        "test_min_N": 2,
+        "test_max_N": 6
+    },
+
+    "model_params":  {
+            "default_gcn": {
+                "small_model": {
+                    "hidden_channels": 24,
+                    "num_layers": 6,
+                    "name": "gcn_small_",
+                    "test_batching": 5
+                },
+                "big_model": {
+                    "hidden_channels": 64,
+                    "num_layers": 28,
+                    "name": "gcn_big_",
+                    "test_batching": 5
+                }
+            },
+            
+            "fishnet_gcn": {     
+                "small_model": {
+                    "hidden_channels": 24,
+                    "num_layers": 3,
+                    "fishnets_n_p": 8,
+                    "name": "fishnet_small_",
+                    "test_batching": 5
+                },
+                "big_model": {
+                    "hidden_channels": 64,
+                    "num_layers": 28,
+                    "fishnets_n_p": 10,
+                    "name": "fishnet_big_",
+                    "test_batching": 10
+                },
+                "layers_16": {
+                    "hidden_channels": 64,
+                    "num_layers": 16,
+                    "fishnets_n_p": 10,
+                    "name": "fishnet_big_",
+                    "test_batching": 10
+                },
+                "layers_20": {
+                    "hidden_channels": 64,
+                    "num_layers": 20,
+                    "fishnets_n_p": 10,
+                    "name": "fishnet_big_",
+                    "test_batching": 10
+                },
+                "small_width_64": {
+                    "hidden_channels": 64,
+                    "num_layers": 3,
+                    "fishnets_n_p": 10,
+                    "name": "fishnet_small_",
+                    "test_batching": 10
+                }
+            }
+        }
+
+}

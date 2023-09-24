@@ -10,6 +10,10 @@ from torch_geometric.utils import scatter
 from torch.optim.lr_scheduler import OneCycleLR
 from accelerate import Accelerator
 
+# for simulating noise
+from torch.distributions.binomial import Binomial
+
+
 
 import sys,os
 import json
@@ -69,6 +73,13 @@ DATA_DIR = configs["training_params"]["data_dir"]
 MODEL_DIR = configs["training_params"]["model_dir"]
 LOAD_DIR = configs["training_params"]["load_dir"]
 
+# noise model configs
+TRAIN_MIN_N = configs["noise_params"]["train_min_N"]
+TRAIN_MAX_N = configs["noise_params"]["train_max_N"]
+
+TEST_MIN_N = configs["noise_params"]["test_min_N"]
+TEST_MAX_N = configs["noise_params"]["test_max_N"]
+
 
 if not os.path.exists(MODEL_DIR):
    # Create a new directory if it does not exist
@@ -120,18 +131,21 @@ test_loader = RandomNodeLoader(data, num_parts=TEST_BATCHING, num_workers=5)
 
 
 
-
-
-# initialise model
+# initialise model -- here we need to initialise to accommodate the N coinflips in our noise model
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+
 if model_type == "fishnet_gcn":
     FISHNETS_N_P = configs["model_params"][model_type][model_size]["fishnets_n_p"]
-    model = FishnetGCN(n_p=FISHNETS_N_P, num_layers=NUM_LAYERS, hidden_channels=HIDDEN_CHANNELS).to(device)
+    model = FishnetGCN(n_p=FISHNETS_N_P, num_layers=NUM_LAYERS, 
+                       hidden_channels=HIDDEN_CHANNELS, edgedim=9,
+                       xdim=9).to(device)
 
 else:
-    model = DeeperGCN(hidden_channels=HIDDEN_CHANNELS, num_layers=NUM_LAYERS).to(device)
+    model = DeeperGCN(hidden_channels=HIDDEN_CHANNELS, 
+                      num_layers=NUM_LAYERS, edgedim=9,
+                      xdim=9).to(device)
 
 # start up the optimizer
 optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
@@ -184,24 +198,44 @@ else:
     accelerator.save_state(MODEL_PATH)
 
 
+def simulate_edge_noise(edge_attr, minflip=1, maxflip=10):
+
+
+    N = torch.randint(low=1, high=10, size=(edge_attr.shape[0], 1)).to(device) # draw up to 20 maybe ?
+    m = Binomial(total_count=N, probs=edge_attr)
+    x = m.sample(sample_shape=()).to(device)
+    x /= N
+    edge_attr = torch.cat([x, N], dim=-1)
+    return edge_attr
+
 
 
 # print out model complexity
 print("number of learnable parameters in model: ", count_parameters(model))
 
-def train(epoch):
+def train_noise(epoch):
     #model.train()
 
-    pbar = tqdm(total=len(train_loader), position=0)
+    pbar = tqdm(total=len(train_loader))
     pbar.set_description(f'Training epoch: {epoch:04d}')
 
     total_loss = total_examples = 0
     for data in train_loader:
+        
+        # simulate noise on-the-fly
+        data.edge_attr = simulate_edge_noise(data.edge_attr, 
+                                             minflip=TRAIN_MIN_N,
+                                             maxflip=TRAIN_MAX_N)
+        # Initialize features of nodes by aggregating edge features.
+        row, col = data.edge_index
+        data.x = scatter(data.edge_attr, col, dim_size=data.num_nodes, reduce='sum')
+
+        # regular optimizer stuff
         optimizer.zero_grad()
         data = data.to(device)
         out = model(data.x, data.edge_index, data.edge_attr)
         loss = criterion(out[data.train_mask], data.y[data.train_mask])
-        #loss.backward()
+
         accelerator.backward(loss)
         optimizer.step() 
         if DO_SCHEDULER:
@@ -218,16 +252,26 @@ def train(epoch):
 
 
 @torch.no_grad()
-def test():
+def test_noise():
     model.eval()
 
     y_true = {'train': [], 'valid': [], 'test': []}
     y_pred = {'train': [], 'valid': [], 'test': []}
 
-    pbar = tqdm(total=len(test_loader), position=0)
+    pbar = tqdm(total=len(test_loader))
     pbar.set_description(f'Evaluating epoch: {epoch:04d}')
 
     for data in test_loader:
+        data = data.to(device)
+
+        # simulate noise on-the-fly
+        data.edge_attr = simulate_edge_noise(data.edge_attr, 
+                                             minflip=TEST_MIN_N,
+                                             maxflip=TEST_MAX_N)
+        # Initialize features of nodes by aggregating edge features.
+        row, col = data.edge_index
+        data.x = scatter(data.edge_attr, col, dim_size=data.num_nodes, reduce='sum')
+
         data = data.to(device)
         out = model(data.x, data.edge_index, data.edge_attr)
 
@@ -272,12 +316,12 @@ best_rocauc = 0.0
 for epoch in range(1, EPOCHS + 1):
 
     if LOAD_MODEL and (epoch == 1):
-        train_rocauc, valid_rocauc, test_rocauc = test()
+        train_rocauc, valid_rocauc, test_rocauc = test_noise()
         print(f'loaded stats, Train: {train_rocauc:.4f}, '
             f'Val: {valid_rocauc:.4f}, Test: {test_rocauc:.4f}')
 
-    loss = train(epoch)
-    train_rocauc, valid_rocauc, test_rocauc = test()
+    loss = train_noise(epoch)
+    train_rocauc, valid_rocauc, test_rocauc = test_noise()
     print(f'Loss: {loss:.4f}, Train: {train_rocauc:.4f}, '
           f'Val: {valid_rocauc:.4f}, Test: {test_rocauc:.4f}')
 
