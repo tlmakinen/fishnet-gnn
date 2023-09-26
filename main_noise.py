@@ -199,17 +199,17 @@ else:
     accelerator.save_state(MODEL_PATH)
 
 
-def simulate_edge_noise(edge_attr, minflip=1, maxflip=10):
+def simulate_edge_noise(edge_attr, minflip=20, maxflip=200):
 
     N = torch.randint(low=minflip, high=maxflip, size=(edge_attr.shape[0], 1)).to(device) # draw up to 20 maybe ?
     m = Binomial(total_count=N, probs=edge_attr)
     x = m.sample(sample_shape=()).to(device)
     x /= N
-    edge_attr = torch.cat([x, 1. / N], dim=-1)
+    edge_attr = torch.cat([x, N / 200], dim=-1)
     return edge_attr
 
 
-def simulate_edge_noise_test(edge_attr, minflip=1, maxflip=10):
+def simulate_edge_noise_test(edge_attr, minflip=20, maxflip=200):
     
     # slices from extrema
     N1 = torch.randint(low=20, high=50, size=(edge_attr.shape[0] // 2, 1)).to(device)
@@ -219,7 +219,7 @@ def simulate_edge_noise_test(edge_attr, minflip=1, maxflip=10):
     m = Binomial(total_count=N, probs=edge_attr)
     x = m.sample(sample_shape=()).to(device)
     x /= N
-    edge_attr = torch.cat([x, 1. / torch.arcsinh(N)], dim=-1)
+    edge_attr = torch.cat([x, N / 200], dim=-1)
     return edge_attr
 
 
@@ -323,6 +323,9 @@ history = {
 }
 
 best_rocauc = 0.0
+
+# reset random seed
+torch.manual_seed(seed)
 
 # training loop
 for epoch in range(1, EPOCHS + 1):

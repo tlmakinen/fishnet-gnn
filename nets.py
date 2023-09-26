@@ -67,7 +67,6 @@ def construct_fisher_matrix_multiple_torch(outputs):
     _diag = torch.vmap(torch.diag)
     
     middle = _diag(torch.triu(Q) - torch.nn.Softplus()(torch.triu(Q))).to(device)
-        
     padding = torch.zeros(Q.shape).to(device)
     
     # vmap the fill_diagonal code
@@ -253,6 +252,67 @@ class DeeperGCN(torch.nn.Module):
 
         for layer in self.layers[1:]:
             x = layer(x, edge_index, edge_attr)
+
+        x = self.layers[0].act(self.layers[0].norm(x))
+        x = F.dropout(x, p=0.1, training=self.training)
+
+        return self.lin(x)
+
+
+class OneLayerFishnetGCN(torch.nn.Module):
+    def __init__(self, n_p, num_layers, hidden_channels=None,  
+                 xdim=8, edgedim=8, ydim=112, act="relu"):
+        super().__init__()
+
+        if act == "relu":
+            act = ReLU(inplace=True)
+        else:
+            act = SiLU()
+        
+        # need some extra channels for the fisher matrix
+        fishnets_channels = n_p + ((n_p * (n_p + 1)) // 2)
+        
+        if hidden_channels is None:
+            hidden_channels = n_p
+
+        self.node_encoder = Linear(xdim, hidden_channels)
+        self.edge_encoder = Linear(edgedim, hidden_channels)
+
+        self.layers = torch.nn.ModuleList()
+        for i in range(1, num_layers + 1):
+
+            # use fishnets aggregation against the data first
+            if i == 1:
+                conv = GENConv(hidden_channels, hidden_channels, 
+                            aggr=FishnetsAggregation(in_size=hidden_channels, n_p=n_p),
+                            t=1.0, learn_t=False, 
+                            num_layers=2, norm='layer')
+            else:
+                conv = GENConv(hidden_channels, hidden_channels, aggr='softmax',
+                           t=1.0, learn_t=True, num_layers=2, norm='layer')
+            # output of conv is n_p size
+            norm = LayerNorm(hidden_channels, elementwise_affine=True)
+            #act = act
+
+            layer = DeepGCNLayer(conv, norm, act, block='res+', dropout=0.1,
+                                 ckpt_grad=i % 3)
+            self.layers.append(layer)
+
+        self.lin = Linear(hidden_channels, ydim)
+
+    def forward(self, x, edge_index, edge_attr):
+        x = self.node_encoder(x)
+        edge_attr = self.edge_encoder(edge_attr)
+        
+        #print("x", x.shape)
+
+        x = self.layers[0].conv(x, edge_index, edge_attr)
+        
+        #print("x", x.shape)
+
+        for layer in self.layers[1:]:
+            x = layer(x, edge_index, edge_attr)
+            #print("x", x.shape)
 
         x = self.layers[0].act(self.layers[0].norm(x))
         x = F.dropout(x, p=0.1, training=self.training)
