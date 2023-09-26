@@ -140,7 +140,8 @@ if model_type == "fishnet_gcn":
     FISHNETS_N_P = configs["model_params"][model_type][model_size]["fishnets_n_p"]
     model = FishnetGCN(n_p=FISHNETS_N_P, num_layers=NUM_LAYERS, 
                        hidden_channels=HIDDEN_CHANNELS, edgedim=9,
-                       xdim=9).to(device)
+                       xdim=9,
+                       act="relu").to(device)
 
 else:
     model = DeeperGCN(hidden_channels=HIDDEN_CHANNELS, 
@@ -200,12 +201,25 @@ else:
 
 def simulate_edge_noise(edge_attr, minflip=1, maxflip=10):
 
-
-    N = torch.randint(low=1, high=10, size=(edge_attr.shape[0], 1)).to(device) # draw up to 20 maybe ?
+    N = torch.randint(low=minflip, high=maxflip, size=(edge_attr.shape[0], 1)).to(device) # draw up to 20 maybe ?
     m = Binomial(total_count=N, probs=edge_attr)
     x = m.sample(sample_shape=()).to(device)
     x /= N
-    edge_attr = torch.cat([x, N], dim=-1)
+    edge_attr = torch.cat([x, 1. / N], dim=-1)
+    return edge_attr
+
+
+def simulate_edge_noise_test(edge_attr, minflip=1, maxflip=10):
+    
+    # slices from extrema
+    N1 = torch.randint(low=20, high=50, size=(edge_attr.shape[0] // 2, 1)).to(device)
+    N2 = torch.randint(low=170, high=200, size=(edge_attr.shape[0] // 2, 1)).to(device)
+    N = torch.cat([N1,N2]).to(device)
+     # draw up to 20 maybe ?
+    m = Binomial(total_count=N, probs=edge_attr)
+    x = m.sample(sample_shape=()).to(device)
+    x /= N
+    edge_attr = torch.cat([x, 1. / torch.arcsinh(N)], dim=-1)
     return edge_attr
 
 
@@ -265,9 +279,7 @@ def test_noise():
         data = data.to(device)
 
         # simulate noise on-the-fly
-        data.edge_attr = simulate_edge_noise(data.edge_attr, 
-                                             minflip=TEST_MIN_N,
-                                             maxflip=TEST_MAX_N)
+        data.edge_attr = simulate_edge_noise_test(data.edge_attr)
         # Initialize features of nodes by aggregating edge features.
         row, col = data.edge_index
         data.x = scatter(data.edge_attr, col, dim_size=data.num_nodes, reduce='sum')
@@ -349,6 +361,9 @@ for epoch in range(1, EPOCHS + 1):
 
         # save training history
         save_obj(history, MODEL_DIR + MODEL_NAME + "_history")
+
+    # save history each epoch
+    save_obj(history, MODEL_DIR + MODEL_NAME + "_history")
 
 # save everything
 print("FINISHED TRAINING. SAVING EVERYTHING.")

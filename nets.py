@@ -21,6 +21,7 @@ from torch.nn import (
     InstanceNorm1d,
     LayerNorm,
     ReLU,
+    SiLU,
     Sequential,
 )
 from torch_geometric.nn.dense.linear import Linear
@@ -169,8 +170,13 @@ class FishnetsAggregation(Aggregation):
 
 class FishnetGCN(torch.nn.Module):
     def __init__(self, n_p, num_layers, hidden_channels=None,  
-                 xdim=8, edgedim=8, ydim=112):
+                 xdim=8, edgedim=8, ydim=112, act="relu"):
         super().__init__()
+
+        if act == "relu":
+            act = ReLU(inplace=True)
+        else:
+            act = SiLU()
         
         # need some extra channels for the fisher matrix
         fishnets_channels = n_p + ((n_p * (n_p + 1)) // 2)
@@ -189,7 +195,7 @@ class FishnetGCN(torch.nn.Module):
                            num_layers=2, norm='layer')
             # output of conv is n_p size
             norm = LayerNorm(hidden_channels, elementwise_affine=True)
-            act = ReLU(inplace=True)
+            #act = act
 
             layer = DeepGCNLayer(conv, norm, act, block='res+', dropout=0.1,
                                  ckpt_grad=i % 3)
