@@ -306,6 +306,8 @@ for epoch in range(1, EPOCHS + 1):
         # save training history
         save_obj(history, MODEL_DIR + MODEL_NAME + "_history")
 
+    # save history every epoch
+    save_obj(history, MODEL_DIR + MODEL_NAME + "_history")
 # save everything
 print("FINISHED TRAINING. SAVING EVERYTHING.")
 accelerator.save_model(model, MODEL_PATH)
