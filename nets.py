@@ -287,14 +287,16 @@ class OneLayerFishnetGCN(torch.nn.Module):
                             aggr=FishnetsAggregation(in_size=hidden_channels, n_p=n_p),
                             t=1.0, learn_t=False, 
                             num_layers=2, norm='layer')
+                dropout = 0.0
             else:
                 conv = GENConv(hidden_channels, hidden_channels, aggr='softmax',
                            t=1.0, learn_t=True, num_layers=2, norm='layer')
+                dropout = 0.1
             # output of conv is n_p size
             norm = LayerNorm(hidden_channels, elementwise_affine=True)
             #act = act
 
-            layer = DeepGCNLayer(conv, norm, act, block='res+', dropout=0.1,
+            layer = DeepGCNLayer(conv, norm, act, block='res+', dropout=dropout,
                                  ckpt_grad=i % 3)
             self.layers.append(layer)
 
